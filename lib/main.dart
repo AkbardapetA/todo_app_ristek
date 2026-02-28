@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 void main() => runApp(const TodoApp());
@@ -354,14 +356,28 @@ class _MainShellState extends State<MainShell> {
                       return _FolderCard(
                         folder: folder,
                         accent: widget.accent,
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                'Folder detail for "${folder.name}" in Part 6.',
+                        onTap: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => FolderDetailPage(
+                                folder: folder,
+                                accent: widget.accent,
+                                onAddList: (TodoListItem item) =>
+                                    _addListToFolder(folder, item),
+                                onToggle: (String id) =>
+                                    _toggleList(folder, id),
+                                onDelete: (String id) =>
+                                    _deleteList(folder, id),
+                                onEdit: (TodoListItem updated) =>
+                                    _editList(folder, updated),
+                                onEditFolder:
+                                    (String newName, IconData newIcon) =>
+                                        _editFolder(folder, newName, newIcon),
                               ),
                             ),
                           );
+                          setState(() {});
                         },
                       );
                     },
@@ -369,80 +385,13 @@ class _MainShellState extends State<MainShell> {
                 ],
               ),
             ),
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-              children: <Widget>[
-                Text('Name: ${_profile.fullName}'),
-                Text('Major: ${_profile.major}'),
-                Text(
-                  'DOB: ${_profile.dob.month}/${_profile.dob.day}/${_profile.dob.year}',
-                ),
-                Text('Email: ${_profile.email}'),
-                const SizedBox(height: 12),
-                FilledButton(
-                  onPressed: _deleteAllCompletedTasks,
-                  child: const Text('Delete Completed Tasks'),
-                ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: () {
-                    if (_folders.isEmpty) {
-                      return;
-                    }
-                    final Folder firstFolder = _folders.first;
-                    _editFolder(
-                      firstFolder,
-                      '${firstFolder.name} (Edited)',
-                      firstFolder.icon,
-                    );
-                  },
-                  child: const Text('Edit First Folder (temp)'),
-                ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: () {
-                    if (_folders.isEmpty || _folders.first.lists.isEmpty) {
-                      return;
-                    }
-                    final Folder firstFolder = _folders.first;
-                    final TodoListItem firstItem = firstFolder.lists.first;
-                    _toggleList(firstFolder, firstItem.id);
-                  },
-                  child: const Text('Toggle First Task (temp)'),
-                ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: () {
-                    if (_folders.isEmpty || _folders.first.lists.isEmpty) {
-                      return;
-                    }
-                    final Folder firstFolder = _folders.first;
-                    final TodoListItem firstItem = firstFolder.lists.first;
-                    _editList(
-                      firstFolder,
-                      TodoListItem(
-                        id: firstItem.id,
-                        title: '${firstItem.title} (Edited)',
-                        isDone: firstItem.isDone,
-                        priority: firstItem.priority,
-                      ),
-                    );
-                  },
-                  child: const Text('Edit First Task (temp)'),
-                ),
-                const SizedBox(height: 8),
-                FilledButton(
-                  onPressed: () {
-                    if (_folders.isEmpty || _folders.first.lists.isEmpty) {
-                      return;
-                    }
-                    final Folder firstFolder = _folders.first;
-                    final TodoListItem firstItem = firstFolder.lists.first;
-                    _deleteList(firstFolder, firstItem.id);
-                  },
-                  child: const Text('Delete First Task (temp)'),
-                ),
-              ],
+            ProfilePage(
+              profile: _profile,
+              totalDone: _completedLists,
+              totalPending: max(_totalLists - _completedLists, 0),
+              accent: widget.accent,
+              onDeleteCompletedTasks: _deleteAllCompletedTasks,
+              onChanged: () => setState(() {}),
             ),
           ],
         ),
@@ -454,9 +403,7 @@ class _MainShellState extends State<MainShell> {
           if (_tab == 0) {
             _addFolder('Quick Folder', Icons.folder_copy_rounded);
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Edit profile flow in Part 7.')),
-            );
+            _showEditProfileDialog(context);
           }
         },
       ),
@@ -537,6 +484,857 @@ class _MainShellState extends State<MainShell> {
       TodoListItem(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         title: 'New List',
+      ),
+    );
+  }
+
+  Future<void> _showEditProfileDialog(BuildContext context) async {
+    final TextEditingController name = TextEditingController(
+      text: _profile.fullName,
+    );
+    final TextEditingController major = TextEditingController(
+      text: _profile.major,
+    );
+    final TextEditingController email = TextEditingController(
+      text: _profile.email,
+    );
+
+    final bool? saved = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Edit Profile'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(hintText: 'Full name'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: major,
+                decoration: const InputDecoration(hintText: 'Major'),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: email,
+                decoration: const InputDecoration(hintText: 'Email'),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (saved == true) {
+      setState(() {
+        _profile.fullName = name.text.trim().isEmpty
+            ? _profile.fullName
+            : name.text.trim();
+        _profile.major = major.text.trim();
+        _profile.email = email.text.trim();
+      });
+    }
+
+    name.dispose();
+    major.dispose();
+    email.dispose();
+  }
+}
+
+class FolderDetailPage extends StatefulWidget {
+  const FolderDetailPage({
+    super.key,
+    required this.folder,
+    required this.accent,
+    required this.onAddList,
+    required this.onToggle,
+    required this.onDelete,
+    required this.onEdit,
+    required this.onEditFolder,
+  });
+
+  final Folder folder;
+  final Color accent;
+  final ValueChanged<TodoListItem> onAddList;
+  final ValueChanged<String> onToggle;
+  final ValueChanged<String> onDelete;
+  final ValueChanged<TodoListItem> onEdit;
+  final void Function(String newName, IconData newIcon) onEditFolder;
+
+  @override
+  State<FolderDetailPage> createState() => _FolderDetailPageState();
+}
+
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({
+    super.key,
+    required this.profile,
+    required this.totalDone,
+    required this.totalPending,
+    required this.accent,
+    required this.onDeleteCompletedTasks,
+    required this.onChanged,
+  });
+
+  final ProfileData profile;
+  final int totalDone;
+  final int totalPending;
+  final Color accent;
+  final int Function() onDeleteCompletedTasks;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    String dateFmt(DateTime date) => '${date.month}/${date.day}/${date.year}';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 120),
+      child: Column(
+        children: <Widget>[
+          const SizedBox(height: 10),
+          Stack(
+            alignment: Alignment.bottomRight,
+            children: <Widget>[
+              CircleAvatar(
+                radius: 48,
+                backgroundImage: NetworkImage(profile.avatarUrl),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(blurRadius: 16, color: Color(0x33000000)),
+                  ],
+                ),
+                child: IconButton(
+                  icon: const Icon(
+                    Icons.camera_alt_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('(feature not implemented).'),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            profile.fullName,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            profile.major,
+            style: TextStyle(
+              color: cs.onSurface.withValues(alpha: 0.65),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _MiniMetric(value: '$totalDone', label: 'TASKS DONE'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _MiniMetric(value: '$totalPending', label: 'PENDING'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: totalDone == 0
+                  ? null
+                  : () async {
+                      final bool? confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return AlertDialog(
+                            title: const Text('Delete Finished Tasks'),
+                            content: const Text(
+                              'This will remove all completed tasks from every folder.',
+                            ),
+                            actions: <Widget>[
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+
+                      if (confirmed != true || !context.mounted) {
+                        return;
+                      }
+                      final int removed = onDeleteCompletedTasks();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            removed > 0
+                                ? '$removed finished task(s) deleted.'
+                                : 'No finished tasks to delete.',
+                          ),
+                        ),
+                      );
+                    },
+              icon: const Icon(Icons.delete_sweep_rounded),
+              label: const Text('Delete All Finished Tasks'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      const Expanded(
+                        child: Text(
+                          'Personal Info',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final bool saved = await _editPersonalInfo(
+                            context,
+                            profile,
+                          );
+                          if (saved) {
+                            onChanged();
+                          }
+                        },
+                        icon: Icon(Icons.edit_rounded, size: 16, color: accent),
+                        label: Text(
+                          'Edit',
+                          style: TextStyle(
+                            color: accent,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _InfoRow(
+                    icon: Icons.person_rounded,
+                    label: 'FULL NAME',
+                    value: profile.fullName,
+                  ),
+                  _InfoRow(
+                    icon: Icons.school_rounded,
+                    label: 'MAJOR',
+                    value: profile.major,
+                  ),
+                  _InfoRow(
+                    icon: Icons.cake_rounded,
+                    label: 'DATE OF BIRTH',
+                    value: dateFmt(profile.dob),
+                  ),
+                  _InfoRow(
+                    icon: Icons.email_rounded,
+                    label: 'EMAIL',
+                    value: profile.email,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Future<bool> _editPersonalInfo(
+    BuildContext context,
+    ProfileData profile,
+  ) async {
+    final TextEditingController name = TextEditingController(
+      text: profile.fullName,
+    );
+    final TextEditingController major = TextEditingController(
+      text: profile.major,
+    );
+    final TextEditingController email = TextEditingController(
+      text: profile.email,
+    );
+    DateTime dateOfBirth = profile.dob;
+
+    final bool? result = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setLocalState,
+              ) {
+                return AlertDialog(
+                  title: const Text('Edit Personal Info'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      TextField(
+                        controller: name,
+                        decoration: const InputDecoration(
+                          hintText: 'Full name',
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: major,
+                        decoration: const InputDecoration(hintText: 'Major'),
+                      ),
+                      const SizedBox(height: 10),
+                      InkWell(
+                        onTap: () async {
+                          final DateTime? picked = await showDatePicker(
+                            context: context,
+                            initialDate: dateOfBirth,
+                            firstDate: DateTime(1970),
+                            lastDate: DateTime(DateTime.now().year + 1),
+                          );
+                          if (picked != null) {
+                            setLocalState(() => dateOfBirth = picked);
+                          }
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.06),
+                          ),
+                          child: Text(
+                            'DOB: ${dateOfBirth.month}/${dateOfBirth.day}/${dateOfBirth.year}',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: email,
+                        decoration: const InputDecoration(hintText: 'Email'),
+                      ),
+                    ],
+                  ),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        profile.fullName = name.text.trim().isEmpty
+                            ? profile.fullName
+                            : name.text.trim();
+                        profile.major = major.text.trim();
+                        profile.email = email.text.trim();
+                        profile.dob = dateOfBirth;
+                        Navigator.pop(context, true);
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                );
+              },
+        );
+      },
+    );
+
+    name.dispose();
+    major.dispose();
+    email.dispose();
+
+    return result == true;
+  }
+}
+
+class _FolderDetailPageState extends State<FolderDetailPage> {
+  String _q = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+
+    final List<TodoListItem> lists = widget.folder.lists.where((
+      TodoListItem item,
+    ) {
+      final String query = _q.trim().toLowerCase();
+      if (query.isEmpty) {
+        return true;
+      }
+      return item.title.toLowerCase().contains(query);
+    }).toList();
+
+    lists.sort((TodoListItem a, TodoListItem b) {
+      final int aPriorityRank = a.priority == ListPriority.priority ? 0 : 1;
+      final int bPriorityRank = b.priority == ListPriority.priority ? 0 : 1;
+
+      if (aPriorityRank != bPriorityRank) {
+        return aPriorityRank.compareTo(bPriorityRank);
+      }
+      if (a.isDone != b.isDone) {
+        return a.isDone ? 1 : -1;
+      }
+      return 0;
+    });
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.folder.name),
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Edit Folder',
+            icon: const Icon(Icons.edit_rounded),
+            onPressed: () async {
+              final TextEditingController nameController =
+                  TextEditingController(text: widget.folder.name);
+              final String? newName = await showDialog<String>(
+                context: context,
+                builder: (BuildContext context) {
+                  return AlertDialog(
+                    title: const Text('Edit Folder'),
+                    content: TextField(
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        hintText: 'Folder name',
+                      ),
+                      autofocus: true,
+                    ),
+                    actions: <Widget>[
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () =>
+                            Navigator.pop(context, nameController.text.trim()),
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  );
+                },
+              );
+              nameController.dispose();
+              if (newName == null || newName.isEmpty) {
+                return;
+              }
+              widget.onEditFolder(newName, widget.folder.icon);
+              setState(() {});
+            },
+          ),
+          const SizedBox(width: 6),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            children: <Widget>[
+              TextField(
+                onChanged: (String value) => setState(() => _q = value),
+                decoration: const InputDecoration(
+                  hintText: 'Search lists...',
+                  prefixIcon: Icon(Icons.search_rounded),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: lists.length,
+                  separatorBuilder: (_, index) => const SizedBox(height: 10),
+                  itemBuilder: (BuildContext context, int index) {
+                    final TodoListItem item = lists[index];
+                    final bool isPriority =
+                        item.priority == ListPriority.priority;
+
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 6,
+                        ),
+                        leading: GestureDetector(
+                          onTap: () {
+                            widget.onToggle(item.id);
+                            setState(() {});
+                          },
+                          child: _CheckDot(
+                            checked: item.isDone,
+                            accent: widget.accent,
+                          ),
+                        ),
+                        title: Text(
+                          item.title,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            decoration: item.isDone
+                                ? TextDecoration.lineThrough
+                                : null,
+                            color: item.isDone
+                                ? cs.onSurface.withValues(alpha: 0.45)
+                                : cs.onSurface,
+                          ),
+                        ),
+                        subtitle: isPriority
+                            ? Text(
+                                'PRIORITY',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  letterSpacing: 1,
+                                  fontWeight: FontWeight.w800,
+                                  color: widget.accent.withValues(alpha: 0.9),
+                                ),
+                              )
+                            : null,
+                        trailing: PopupMenuButton<String>(
+                          icon: Icon(
+                            Icons.more_horiz_rounded,
+                            color: cs.onSurface.withValues(alpha: 0.8),
+                          ),
+                          onSelected: (String value) async {
+                            if (value == 'edit') {
+                              final TodoListItem? updated =
+                                  await _showListEditorDialog(existing: item);
+                              if (updated == null) {
+                                return;
+                              }
+                              widget.onEdit(updated);
+                              setState(() {});
+                            }
+                            if (value == 'delete') {
+                              widget.onDelete(item.id);
+                              setState(() {});
+                            }
+                          },
+                          itemBuilder: (_) => const <PopupMenuEntry<String>>[
+                            PopupMenuItem<String>(
+                              value: 'edit',
+                              child: Text('Edit'),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'delete',
+                              child: Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final TodoListItem? created = await _showListEditorDialog();
+                    if (created == null) {
+                      return;
+                    }
+                    widget.onAddList(created);
+                    setState(() {});
+                  },
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('New List'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<TodoListItem?> _showListEditorDialog({TodoListItem? existing}) async {
+    final bool isEdit = existing != null;
+    final TextEditingController titleController = TextEditingController(
+      text: existing?.title ?? '',
+    );
+    ListPriority selectedPriority = existing?.priority ?? ListPriority.normal;
+
+    final TodoListItem? result = await showDialog<TodoListItem>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder:
+              (
+                BuildContext context,
+                void Function(void Function()) setLocalState,
+              ) {
+                return AlertDialog(
+                  title: Text(isEdit ? 'Edit List' : 'New List'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      TextField(
+                        controller: titleController,
+                        decoration: const InputDecoration(
+                          hintText: 'List title',
+                        ),
+                        autofocus: true,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: _PriorityChip(
+                              text: 'Normal',
+                              selected: selectedPriority == ListPriority.normal,
+                              onTap: () => setLocalState(
+                                () => selectedPriority = ListPriority.normal,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _PriorityChip(
+                              text: 'Priority',
+                              selected:
+                                  selectedPriority == ListPriority.priority,
+                              onTap: () => setLocalState(
+                                () => selectedPriority = ListPriority.priority,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  actions: <Widget>[
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () {
+                        final String title = titleController.text.trim();
+                        if (title.isEmpty) {
+                          return;
+                        }
+                        Navigator.pop(
+                          context,
+                          TodoListItem(
+                            id:
+                                existing?.id ??
+                                DateTime.now().microsecondsSinceEpoch
+                                    .toString(),
+                            title: title,
+                            isDone: existing?.isDone ?? false,
+                            priority: selectedPriority,
+                          ),
+                        );
+                      },
+                      child: Text(isEdit ? 'Save' : 'Create'),
+                    ),
+                  ],
+                );
+              },
+        );
+      },
+    );
+
+    titleController.dispose();
+    return result;
+  }
+}
+
+class _MiniMetric extends StatelessWidget {
+  const _MiniMetric({required this.value, required this.label});
+
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        child: Column(
+          children: <Widget>[
+            Text(
+              value,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w800,
+                color: cs.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: cs.onSurface.withValues(alpha: 0.1),
+            child: Icon(
+              icon,
+              size: 18,
+              color: cs.onSurface.withValues(alpha: 0.8),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    letterSpacing: 1,
+                    fontWeight: FontWeight.w800,
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CheckDot extends StatelessWidget {
+  const _CheckDot({required this.checked, required this.accent});
+
+  final bool checked;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: checked ? accent : Colors.transparent,
+        border: Border.all(
+          width: 1.8,
+          color: checked ? accent : cs.onSurface.withValues(alpha: 0.5),
+        ),
+      ),
+      child: checked
+          ? const Icon(Icons.check, size: 14, color: Colors.white)
+          : null,
+    );
+  }
+}
+
+class _PriorityChip extends StatelessWidget {
+  const _PriorityChip({
+    required this.text,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String text;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: selected
+              ? cs.primary.withValues(alpha: 0.22)
+              : cs.onSurface.withValues(alpha: 0.06),
+          border: Border.all(
+            color: selected
+                ? cs.primary.withValues(alpha: 0.7)
+                : Colors.transparent,
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.8),
+          ),
+        ),
       ),
     );
   }
