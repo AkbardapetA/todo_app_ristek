@@ -228,12 +228,6 @@ class _MainShellState extends State<MainShell> {
           folder.lists.any((item) => item.title.toLowerCase().contains(q));
     }).toList();
 
-    final Folder? firstFolder = _folders.isNotEmpty ? _folders.first : null;
-    final TodoListItem? firstTask =
-        firstFolder != null && firstFolder.lists.isNotEmpty
-        ? firstFolder.lists.first
-        : null;
-
     return Scaffold(
       appBar: _tab == 0
           ? AppBar(
@@ -257,9 +251,7 @@ class _MainShellState extends State<MainShell> {
                   icon: const Icon(Icons.settings_rounded),
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('not implemented yet.'),
-                      ),
+                      const SnackBar(content: Text('not implemented yet.')),
                     );
                   },
                 ),
@@ -286,86 +278,96 @@ class _MainShellState extends State<MainShell> {
         child: IndexedStack(
           index: _tab,
           children: <Widget>[
-            ListView(
+            SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-              children: <Widget>[
-                TextField(
-                  onChanged: (String value) => setState(() => _search = value),
-                  decoration: const InputDecoration(
-                    hintText: 'Search folders or tasks...',
-                    prefixIcon: Icon(Icons.search_rounded),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  TextField(
+                    onChanged: (String value) =>
+                        setState(() => _search = value),
+                    decoration: const InputDecoration(
+                      hintText: 'Search folders...',
+                      prefixIcon: Icon(Icons.search_rounded),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Text('Folders (filtered): ${filteredFolders.length}'),
-                Text('Total tasks: $_totalLists'),
-                Text('Completed tasks: $_completedLists'),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: <Widget>[
-                    FilledButton(
-                      onPressed: () =>
-                          _addFolder('New Folder', Icons.folder_rounded),
-                      child: const Text('Add Folder'),
-                    ),
-                    FilledButton(
-                      onPressed: firstFolder == null
-                          ? null
-                          : () => _editFolder(
-                              firstFolder,
-                              '${firstFolder.name} (Edited)',
-                              Icons.work_rounded,
-                            ),
-                      child: const Text('Edit First Folder'),
-                    ),
-                    FilledButton(
-                      onPressed: firstFolder == null
-                          ? null
-                          : () => _addListToFolder(
-                              firstFolder,
-                              TodoListItem(
-                                id: DateTime.now().microsecondsSinceEpoch
-                                    .toString(),
-                                title: 'New Task',
+                  const SizedBox(height: 14),
+                  Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: _StatCard(
+                          icon: Icons.list_alt_rounded,
+                          value: _totalLists.toString(),
+                          label: 'TOTAL TASKS',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _StatCard(
+                          icon: Icons.check_circle_rounded,
+                          value: _completedLists.toString(),
+                          label: 'COMPLETED',
+                          iconColor: Colors.greenAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: <Widget>[
+                      const Expanded(
+                        child: Text(
+                          'My Folders',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => _showNewFolderDialog(context),
+                        child: const Text('+ New Folder'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 1.05,
+                        ),
+                    itemCount: filteredFolders.length + 1,
+                    itemBuilder: (BuildContext context, int idx) {
+                      if (idx == filteredFolders.length) {
+                        return _AddCard(
+                          title: 'Add List',
+                          onTap: () => _showAddListQuickPick(context),
+                        );
+                      }
+
+                      final Folder folder = filteredFolders[idx];
+                      return _FolderCard(
+                        folder: folder,
+                        accent: widget.accent,
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Folder detail for "${folder.name}" in Part 6.',
                               ),
                             ),
-                      child: const Text('Add Task'),
-                    ),
-                    FilledButton(
-                      onPressed: firstFolder == null || firstTask == null
-                          ? null
-                          : () => _toggleList(firstFolder, firstTask.id),
-                      child: const Text('Toggle First Task'),
-                    ),
-                    FilledButton(
-                      onPressed: firstFolder == null || firstTask == null
-                          ? null
-                          : () => _editList(
-                              firstFolder,
-                              TodoListItem(
-                                id: firstTask.id,
-                                title: '${firstTask.title} (Edited)',
-                                isDone: firstTask.isDone,
-                                priority: ListPriority.priority,
-                              ),
-                            ),
-                      child: const Text('Edit First Task'),
-                    ),
-                    FilledButton(
-                      onPressed: firstFolder == null || firstTask == null
-                          ? null
-                          : () => _deleteList(firstFolder, firstTask.id),
-                      child: const Text('Delete First Task'),
-                    ),
-                    FilledButton(
-                      onPressed: _deleteAllCompletedTasks,
-                      child: const Text('Delete Completed'),
-                    ),
-                  ],
-                ),
-              ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
             ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
@@ -376,6 +378,70 @@ class _MainShellState extends State<MainShell> {
                   'DOB: ${_profile.dob.month}/${_profile.dob.day}/${_profile.dob.year}',
                 ),
                 Text('Email: ${_profile.email}'),
+                const SizedBox(height: 12),
+                FilledButton(
+                  onPressed: _deleteAllCompletedTasks,
+                  child: const Text('Delete Completed Tasks'),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () {
+                    if (_folders.isEmpty) {
+                      return;
+                    }
+                    final Folder firstFolder = _folders.first;
+                    _editFolder(
+                      firstFolder,
+                      '${firstFolder.name} (Edited)',
+                      firstFolder.icon,
+                    );
+                  },
+                  child: const Text('Edit First Folder (temp)'),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () {
+                    if (_folders.isEmpty || _folders.first.lists.isEmpty) {
+                      return;
+                    }
+                    final Folder firstFolder = _folders.first;
+                    final TodoListItem firstItem = firstFolder.lists.first;
+                    _toggleList(firstFolder, firstItem.id);
+                  },
+                  child: const Text('Toggle First Task (temp)'),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () {
+                    if (_folders.isEmpty || _folders.first.lists.isEmpty) {
+                      return;
+                    }
+                    final Folder firstFolder = _folders.first;
+                    final TodoListItem firstItem = firstFolder.lists.first;
+                    _editList(
+                      firstFolder,
+                      TodoListItem(
+                        id: firstItem.id,
+                        title: '${firstItem.title} (Edited)',
+                        isDone: firstItem.isDone,
+                        priority: firstItem.priority,
+                      ),
+                    );
+                  },
+                  child: const Text('Edit First Task (temp)'),
+                ),
+                const SizedBox(height: 8),
+                FilledButton(
+                  onPressed: () {
+                    if (_folders.isEmpty || _folders.first.lists.isEmpty) {
+                      return;
+                    }
+                    final Folder firstFolder = _folders.first;
+                    final TodoListItem firstItem = firstFolder.lists.first;
+                    _deleteList(firstFolder, firstItem.id);
+                  },
+                  child: const Text('Delete First Task (temp)'),
+                ),
               ],
             ),
           ],
@@ -397,6 +463,80 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: _BottomBar(
         tab: _tab,
         onChange: (int value) => setState(() => _tab = value),
+      ),
+    );
+  }
+
+  Future<void> _showNewFolderDialog(BuildContext context) async {
+    final TextEditingController nameController = TextEditingController();
+    final String? name = await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('New Folder'),
+          content: TextField(
+            controller: nameController,
+            decoration: const InputDecoration(hintText: 'Folder name'),
+            autofocus: true,
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, nameController.text.trim()),
+              child: const Text('Create'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (name == null || name.isEmpty) {
+      return;
+    }
+    _addFolder(name, Icons.folder_rounded);
+  }
+
+  Future<void> _showAddListQuickPick(BuildContext context) async {
+    if (_folders.isEmpty) {
+      return;
+    }
+
+    final Folder? folder = await showModalBottomSheet<Folder>(
+      context: context,
+      showDragHandle: true,
+      builder: (BuildContext context) {
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          itemCount: _folders.length,
+          separatorBuilder: (_, index) => const SizedBox(height: 10),
+          itemBuilder: (BuildContext context, int index) {
+            final Folder item = _folders[index];
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(child: Icon(item.icon)),
+                title: Text(item.name),
+                subtitle: Text('${item.lists.length} tasks'),
+                onTap: () => Navigator.pop(context, item),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (folder == null) {
+      return;
+    }
+
+    _addListToFolder(
+      folder,
+      TodoListItem(
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        title: 'New List',
       ),
     );
   }
@@ -437,6 +577,158 @@ class _FloatingPlus extends StatelessWidget {
       backgroundColor: accent,
       foregroundColor: Colors.white,
       child: const Icon(Icons.add_rounded, size: 28),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.icon,
+    required this.value,
+    required this.label,
+    this.iconColor,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: cs.onSurface.withValues(alpha: 0.1),
+              child: Icon(
+                icon,
+                size: 18,
+                color: iconColor ?? cs.onSurface.withValues(alpha: 0.85),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                letterSpacing: 1,
+                color: cs.onSurface.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FolderCard extends StatelessWidget {
+  const _FolderCard({
+    required this.folder,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final Folder folder;
+  final Color accent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: accent.withValues(alpha: 0.22),
+                child: Icon(folder.icon, size: 18, color: accent),
+              ),
+              const Spacer(),
+              Text(
+                folder.name,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${folder.lists.length} tasks',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurface.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddCard extends StatelessWidget {
+  const _AddCard({required this.title, required this.onTap});
+
+  final String title;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Card(
+      color: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: cs.onSurface.withValues(alpha: 0.18)),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: cs.onSurface.withValues(alpha: 0.1),
+                child: Icon(
+                  Icons.add_rounded,
+                  color: cs.onSurface.withValues(alpha: 0.85),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                title,
+                style: TextStyle(
+                  color: cs.onSurface.withValues(alpha: 0.7),
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
