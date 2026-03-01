@@ -341,12 +341,25 @@ class _MainShellState extends State<MainShell> {
                         ),
                       ),
                       TextButton(
-                        onPressed: () => _showNewFolderDialog(context),
+                        onPressed: _showNewFolderSheet,
                         child: const Text('+ New Folder'),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
+                  if (filteredFolders.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        _search.trim().isEmpty
+                            ? 'No folders yet. Create one to get started.'
+                            : 'No folders match your search.',
+                        style: TextStyle(
+                          color: cs.onSurface.withValues(alpha: 0.7),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
                   GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -362,7 +375,7 @@ class _MainShellState extends State<MainShell> {
                       if (idx == filteredFolders.length) {
                         return _AddCard(
                           title: 'Add List',
-                          onTap: () => _showAddListQuickPick(context),
+                          onTap: _showAddListQuickPick,
                         );
                       }
 
@@ -391,6 +404,9 @@ class _MainShellState extends State<MainShell> {
                               ),
                             ),
                           );
+                          if (!mounted) {
+                            return;
+                          }
                           setState(() {});
                         },
                       );
@@ -415,9 +431,9 @@ class _MainShellState extends State<MainShell> {
         accent: widget.accent,
         onPressed: () {
           if (_tab == 0) {
-            _addFolder('Quick Folder', Icons.folder_copy_rounded);
+            _showNewFolderSheet();
           } else {
-            _showEditProfileDialog(context);
+            _showEditProfileDialog();
           }
         },
       ),
@@ -428,40 +444,25 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Future<void> _showNewFolderDialog(BuildContext context) async {
-    final TextEditingController nameController = TextEditingController();
-    final String? name = await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('New Folder'),
-          content: TextField(
-            controller: nameController,
-            decoration: const InputDecoration(hintText: 'Folder name'),
-            autofocus: true,
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () =>
-                  Navigator.pop(context, nameController.text.trim()),
-              child: const Text('Create'),
-            ),
-          ],
+  Future<void> _showNewFolderSheet() async {
+    final _FolderCreateResult? result =
+        await showModalBottomSheet<_FolderCreateResult>(
+          context: context,
+          showDragHandle: true,
+          isScrollControlled: true,
+          builder: (_) => const _NewFolderSheet(),
         );
-      },
-    );
-
-    if (name == null || name.isEmpty) {
+    if (!mounted || result == null) {
       return;
     }
-    _addFolder(name, Icons.folder_rounded);
+    final String folderName = result.name.trim();
+    if (folderName.isEmpty) {
+      return;
+    }
+    _addFolder(folderName, result.icon);
   }
 
-  Future<void> _showAddListQuickPick(BuildContext context) async {
+  Future<void> _showAddListQuickPick() async {
     if (_folders.isEmpty) {
       return;
     }
@@ -469,40 +470,27 @@ class _MainShellState extends State<MainShell> {
     final Folder? folder = await showModalBottomSheet<Folder>(
       context: context,
       showDragHandle: true,
-      builder: (BuildContext context) {
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          itemCount: _folders.length,
-          separatorBuilder: (_, index) => const SizedBox(height: 10),
-          itemBuilder: (BuildContext context, int index) {
-            final Folder item = _folders[index];
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(child: Icon(item.icon)),
-                title: Text(item.name),
-                subtitle: Text('${item.lists.length} tasks'),
-                onTap: () => Navigator.pop(context, item),
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) => _PickFolderSheet(folders: _folders),
     );
 
-    if (folder == null) {
+    if (!mounted || folder == null) {
       return;
     }
 
-    _addListToFolder(
-      folder,
-      TodoListItem(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        title: 'New List',
-      ),
+    final TodoListItem? item = await showModalBottomSheet<TodoListItem>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) => const _NewListSheet(),
     );
+    if (!mounted || item == null) {
+      return;
+    }
+
+    _addListToFolder(folder, item);
   }
 
-  Future<void> _showEditProfileDialog(BuildContext context) async {
+  Future<void> _showEditProfileDialog() async {
     final TextEditingController name = TextEditingController(
       text: _profile.fullName,
     );
@@ -551,13 +539,24 @@ class _MainShellState extends State<MainShell> {
       },
     );
 
+    if (!mounted) {
+      name.dispose();
+      major.dispose();
+      email.dispose();
+      return;
+    }
+
     if (saved == true) {
       setState(() {
         _profile.fullName = name.text.trim().isEmpty
             ? _profile.fullName
             : name.text.trim();
-        _profile.major = major.text.trim();
-        _profile.email = email.text.trim();
+        _profile.major = major.text.trim().isEmpty
+            ? _profile.major
+            : major.text.trim();
+        _profile.email = email.text.trim().isEmpty
+            ? _profile.email
+            : email.text.trim();
       });
     }
 
@@ -939,39 +938,24 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
             tooltip: 'Edit Folder',
             icon: const Icon(Icons.edit_rounded),
             onPressed: () async {
-              final TextEditingController nameController =
-                  TextEditingController(text: widget.folder.name);
-              final String? newName = await showDialog<String>(
-                context: context,
-                builder: (BuildContext context) {
-                  return AlertDialog(
-                    title: const Text('Edit Folder'),
-                    content: TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(
-                        hintText: 'Folder name',
-                      ),
-                      autofocus: true,
+              final _FolderCreateResult? result =
+                  await showModalBottomSheet<_FolderCreateResult>(
+                    context: context,
+                    showDragHandle: true,
+                    isScrollControlled: true,
+                    builder: (_) => _EditFolderSheet(
+                      initialName: widget.folder.name,
+                      initialIcon: widget.folder.icon,
                     ),
-                    actions: <Widget>[
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      FilledButton(
-                        onPressed: () =>
-                            Navigator.pop(context, nameController.text.trim()),
-                        child: const Text('Save'),
-                      ),
-                    ],
                   );
-                },
-              );
-              nameController.dispose();
-              if (newName == null || newName.isEmpty) {
+              if (!mounted || result == null) {
                 return;
               }
-              widget.onEditFolder(newName, widget.folder.icon);
+              final String newName = result.name.trim();
+              if (newName.isEmpty) {
+                return;
+              }
+              widget.onEditFolder(newName, result.icon);
               setState(() {});
             },
           ),
@@ -992,88 +976,112 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
               ),
               const SizedBox(height: 12),
               Expanded(
-                child: ListView.separated(
-                  itemCount: lists.length,
-                  separatorBuilder: (_, index) => const SizedBox(height: 10),
-                  itemBuilder: (BuildContext context, int index) {
-                    final TodoListItem item = lists[index];
-                    final bool isPriority =
-                        item.priority == ListPriority.priority;
-
-                    return Card(
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        leading: GestureDetector(
-                          onTap: () {
-                            widget.onToggle(item.id);
-                            setState(() {});
-                          },
-                          child: _CheckDot(
-                            checked: item.isDone,
-                            accent: widget.accent,
-                          ),
-                        ),
-                        title: Text(
-                          item.title,
+                child: lists.isEmpty
+                    ? Center(
+                        child: Text(
+                          _q.trim().isEmpty
+                              ? 'No lists yet. Tap "New List" to start.'
+                              : 'No lists match your search.',
                           style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            decoration: item.isDone
-                                ? TextDecoration.lineThrough
-                                : null,
-                            color: item.isDone
-                                ? cs.onSurface.withValues(alpha: 0.45)
-                                : cs.onSurface,
+                            color: cs.onSurface.withValues(alpha: 0.7),
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        subtitle: isPriority
-                            ? Text(
-                                'PRIORITY',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  letterSpacing: 1,
-                                  fontWeight: FontWeight.w800,
-                                  color: widget.accent.withValues(alpha: 0.9),
+                      )
+                    : ListView.separated(
+                        itemCount: lists.length,
+                        separatorBuilder: (_, index) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (BuildContext context, int index) {
+                          final TodoListItem item = lists[index];
+                          final bool isPriority =
+                              item.priority == ListPriority.priority;
+
+                          return Card(
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 6,
+                              ),
+                              leading: GestureDetector(
+                                onTap: () {
+                                  widget.onToggle(item.id);
+                                  setState(() {});
+                                },
+                                child: _CheckDot(
+                                  checked: item.isDone,
+                                  accent: widget.accent,
                                 ),
-                              )
-                            : null,
-                        trailing: PopupMenuButton<String>(
-                          icon: Icon(
-                            Icons.more_horiz_rounded,
-                            color: cs.onSurface.withValues(alpha: 0.8),
-                          ),
-                          onSelected: (String value) async {
-                            if (value == 'edit') {
-                              final TodoListItem? updated =
-                                  await _showListEditorDialog(existing: item);
-                              if (updated == null) {
-                                return;
-                              }
-                              widget.onEdit(updated);
-                              setState(() {});
-                            }
-                            if (value == 'delete') {
-                              widget.onDelete(item.id);
-                              setState(() {});
-                            }
-                          },
-                          itemBuilder: (_) => const <PopupMenuEntry<String>>[
-                            PopupMenuItem<String>(
-                              value: 'edit',
-                              child: Text('Edit'),
+                              ),
+                              title: Text(
+                                item.title,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  decoration: item.isDone
+                                      ? TextDecoration.lineThrough
+                                      : null,
+                                  color: item.isDone
+                                      ? cs.onSurface.withValues(alpha: 0.45)
+                                      : cs.onSurface,
+                                ),
+                              ),
+                              subtitle: isPriority
+                                  ? Text(
+                                      'PRIORITY',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        letterSpacing: 1,
+                                        fontWeight: FontWeight.w800,
+                                        color: widget.accent.withValues(
+                                          alpha: 0.9,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                              trailing: PopupMenuButton<String>(
+                                icon: Icon(
+                                  Icons.more_horiz_rounded,
+                                  color: cs.onSurface.withValues(alpha: 0.8),
+                                ),
+                                onSelected: (String value) async {
+                                  if (value == 'edit') {
+                                    final TodoListItem? updated =
+                                        await showModalBottomSheet<
+                                          TodoListItem
+                                        >(
+                                          context: context,
+                                          showDragHandle: true,
+                                          isScrollControlled: true,
+                                          builder: (_) =>
+                                              _EditListSheet(existing: item),
+                                        );
+                                    if (!mounted || updated == null) {
+                                      return;
+                                    }
+                                    widget.onEdit(updated);
+                                    setState(() {});
+                                  }
+                                  if (value == 'delete') {
+                                    widget.onDelete(item.id);
+                                    setState(() {});
+                                  }
+                                },
+                                itemBuilder: (_) =>
+                                    const <PopupMenuEntry<String>>[
+                                      PopupMenuItem<String>(
+                                        value: 'edit',
+                                        child: Text('Edit'),
+                                      ),
+                                      PopupMenuItem<String>(
+                                        value: 'delete',
+                                        child: Text('Delete'),
+                                      ),
+                                    ],
+                              ),
                             ),
-                            PopupMenuItem<String>(
-                              value: 'delete',
-                              child: Text('Delete'),
-                            ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
               const SizedBox(height: 10),
               SizedBox(
@@ -1081,8 +1089,14 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
                 height: 52,
                 child: FilledButton.icon(
                   onPressed: () async {
-                    final TodoListItem? created = await _showListEditorDialog();
-                    if (created == null) {
+                    final TodoListItem? created =
+                        await showModalBottomSheet<TodoListItem>(
+                          context: context,
+                          showDragHandle: true,
+                          isScrollControlled: true,
+                          builder: (_) => const _NewListSheet(),
+                        );
+                    if (!mounted || created == null) {
                       return;
                     }
                     widget.onAddList(created);
@@ -1097,98 +1111,6 @@ class _FolderDetailPageState extends State<FolderDetailPage> {
         ),
       ),
     );
-  }
-
-  Future<TodoListItem?> _showListEditorDialog({TodoListItem? existing}) async {
-    final bool isEdit = existing != null;
-    final TextEditingController titleController = TextEditingController(
-      text: existing?.title ?? '',
-    );
-    ListPriority selectedPriority = existing?.priority ?? ListPriority.normal;
-
-    final TodoListItem? result = await showDialog<TodoListItem>(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder:
-              (
-                BuildContext context,
-                void Function(void Function()) setLocalState,
-              ) {
-                return AlertDialog(
-                  title: Text(isEdit ? 'Edit List' : 'New List'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      TextField(
-                        controller: titleController,
-                        decoration: const InputDecoration(
-                          hintText: 'List title',
-                        ),
-                        autofocus: true,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: _PriorityChip(
-                              text: 'Normal',
-                              selected: selectedPriority == ListPriority.normal,
-                              onTap: () => setLocalState(
-                                () => selectedPriority = ListPriority.normal,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: _PriorityChip(
-                              text: 'Priority',
-                              selected:
-                                  selectedPriority == ListPriority.priority,
-                              onTap: () => setLocalState(
-                                () => selectedPriority = ListPriority.priority,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  actions: <Widget>[
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    FilledButton(
-                      onPressed: () {
-                        final String title = titleController.text.trim();
-                        if (title.isEmpty) {
-                          return;
-                        }
-                        Navigator.pop(
-                          context,
-                          TodoListItem(
-                            id:
-                                existing?.id ??
-                                DateTime.now().microsecondsSinceEpoch
-                                    .toString(),
-                            title: title,
-                            isDone: existing?.isDone ?? false,
-                            priority: selectedPriority,
-                          ),
-                        );
-                      },
-                      child: Text(isEdit ? 'Save' : 'Create'),
-                    ),
-                  ],
-                );
-              },
-        );
-      },
-    );
-
-    titleController.dispose();
-    return result;
   }
 }
 
@@ -1311,8 +1233,8 @@ class _CheckDot extends StatelessWidget {
   }
 }
 
-class _PriorityChip extends StatelessWidget {
-  const _PriorityChip({
+class _ChipToggle extends StatelessWidget {
+  const _ChipToggle({
     required this.text,
     required this.selected,
     required this.onTap,
@@ -1349,6 +1271,474 @@ class _PriorityChip extends StatelessWidget {
             color: selected ? cs.primary : cs.onSurface.withValues(alpha: 0.8),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FolderCreateResult {
+  _FolderCreateResult(this.name, this.icon);
+
+  final String name;
+  final IconData icon;
+}
+
+class _NewFolderSheet extends StatefulWidget {
+  const _NewFolderSheet();
+
+  @override
+  State<_NewFolderSheet> createState() => _NewFolderSheetState();
+}
+
+class _NewFolderSheetState extends State<_NewFolderSheet> {
+  final TextEditingController _name = TextEditingController();
+  IconData _icon = Icons.folder_rounded;
+
+  final List<IconData> _icons = const <IconData>[
+    Icons.school_rounded,
+    Icons.person_rounded,
+    Icons.fitness_center_rounded,
+    Icons.work_rounded,
+    Icons.favorite_rounded,
+    Icons.folder_rounded,
+  ];
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'New Folder',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _name,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Folder name'),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Icon',
+            style: TextStyle(
+              fontSize: 12,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w900,
+              color: cs.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            children: _icons.map((IconData icon) {
+              final bool selected = icon == _icon;
+              return InkWell(
+                onTap: () => setState(() => _icon = icon),
+                borderRadius: BorderRadius.circular(999),
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: selected
+                      ? cs.primary.withValues(alpha: 0.25)
+                      : cs.onSurface.withValues(alpha: 0.08),
+                  child: Icon(
+                    icon,
+                    size: 18,
+                    color: selected
+                        ? cs.primary
+                        : cs.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: () {
+                final String name = _name.text.trim();
+                if (name.isEmpty) {
+                  return;
+                }
+                Navigator.pop(context, _FolderCreateResult(name, _icon));
+              },
+              child: const Text(
+                'Create Folder',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditFolderSheet extends StatefulWidget {
+  const _EditFolderSheet({
+    required this.initialName,
+    required this.initialIcon,
+  });
+
+  final String initialName;
+  final IconData initialIcon;
+
+  @override
+  State<_EditFolderSheet> createState() => _EditFolderSheetState();
+}
+
+class _EditFolderSheetState extends State<_EditFolderSheet> {
+  late final TextEditingController _name;
+  late IconData _icon;
+
+  final List<IconData> _icons = const <IconData>[
+    Icons.school_rounded,
+    Icons.person_rounded,
+    Icons.fitness_center_rounded,
+    Icons.work_rounded,
+    Icons.favorite_rounded,
+    Icons.folder_rounded,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.initialName);
+    _icon = widget.initialIcon;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Edit Folder',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _name,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'Folder name'),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Icon',
+            style: TextStyle(
+              fontSize: 12,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w900,
+              color: cs.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            children: _icons.map((IconData icon) {
+              final bool selected = icon == _icon;
+              return InkWell(
+                onTap: () => setState(() => _icon = icon),
+                borderRadius: BorderRadius.circular(999),
+                child: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: selected
+                      ? cs.primary.withValues(alpha: 0.25)
+                      : cs.onSurface.withValues(alpha: 0.08),
+                  child: Icon(
+                    icon,
+                    size: 18,
+                    color: selected
+                        ? cs.primary
+                        : cs.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: () {
+                final String name = _name.text.trim();
+                if (name.isEmpty) {
+                  return;
+                }
+                Navigator.pop(context, _FolderCreateResult(name, _icon));
+              },
+              child: const Text(
+                'Save Changes',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PickFolderSheet extends StatelessWidget {
+  const _PickFolderSheet({required this.folders});
+
+  final List<Folder> folders;
+
+  @override
+  Widget build(BuildContext context) {
+    if (folders.isEmpty) {
+      return const Center(child: Text('No folders available.'));
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      itemCount: folders.length,
+      separatorBuilder: (_, index) => const SizedBox(height: 10),
+      itemBuilder: (BuildContext context, int index) {
+        final Folder folder = folders[index];
+        return Card(
+          child: ListTile(
+            leading: CircleAvatar(
+              radius: 18,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.1),
+              child: Icon(folder.icon, size: 18),
+            ),
+            title: Text(
+              folder.name,
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: Text('${folder.lists.length} tasks'),
+            onTap: () => Navigator.pop(context, folder),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _NewListSheet extends StatefulWidget {
+  const _NewListSheet();
+
+  @override
+  State<_NewListSheet> createState() => _NewListSheetState();
+}
+
+class _NewListSheetState extends State<_NewListSheet> {
+  final TextEditingController _title = TextEditingController();
+  ListPriority _priority = ListPriority.normal;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'New List',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _title,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'List title'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ChipToggle(
+                  text: 'Normal',
+                  selected: _priority == ListPriority.normal,
+                  onTap: () => setState(() => _priority = ListPriority.normal),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ChipToggle(
+                  text: 'Priority',
+                  selected: _priority == ListPriority.priority,
+                  onTap: () =>
+                      setState(() => _priority = ListPriority.priority),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: () {
+                final String title = _title.text.trim();
+                if (title.isEmpty) {
+                  return;
+                }
+                Navigator.pop(
+                  context,
+                  TodoListItem(
+                    id: DateTime.now().microsecondsSinceEpoch.toString(),
+                    title: title,
+                    priority: _priority,
+                  ),
+                );
+              },
+              child: const Text(
+                'Create List',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EditListSheet extends StatefulWidget {
+  const _EditListSheet({required this.existing});
+
+  final TodoListItem existing;
+
+  @override
+  State<_EditListSheet> createState() => _EditListSheetState();
+}
+
+class _EditListSheetState extends State<_EditListSheet> {
+  late final TextEditingController _title;
+  late ListPriority _priority;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = TextEditingController(text: widget.existing.title);
+    _priority = widget.existing.priority;
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        6,
+        16,
+        MediaQuery.of(context).viewInsets.bottom + 16,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            'Edit List',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _title,
+            autofocus: true,
+            decoration: const InputDecoration(hintText: 'List title'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _ChipToggle(
+                  text: 'Normal',
+                  selected: _priority == ListPriority.normal,
+                  onTap: () => setState(() => _priority = ListPriority.normal),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ChipToggle(
+                  text: 'Priority',
+                  selected: _priority == ListPriority.priority,
+                  onTap: () =>
+                      setState(() => _priority = ListPriority.priority),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              onPressed: () {
+                final String title = _title.text.trim();
+                if (title.isEmpty) {
+                  return;
+                }
+                Navigator.pop(
+                  context,
+                  TodoListItem(
+                    id: widget.existing.id,
+                    title: title,
+                    isDone: widget.existing.isDone,
+                    priority: _priority,
+                  ),
+                );
+              },
+              child: const Text(
+                'Save',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
